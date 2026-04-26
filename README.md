@@ -16,7 +16,7 @@ npm run dev
 
 > 后端仓库及完整文档请见 👉 GitHub：[NexMart](https://github.com/EricSu-Dev/NexMart) | Gitee：[NexMart](https://gitee.com/EricSu-Dev/NexMart)
 
-> 管理端仓库 👉 GitHub：[NexMart-user](https://github.com/EricSu-Dev/NexMart-user) | Gitee：[NexMart-user](https://gitee.com/EricSu-Dev/NexMart-user)
+> 用户端仓库 👉 GitHub：[NexMart-user](https://github.com/EricSu-Dev/NexMart-user) | Gitee：[NexMart-user](https://gitee.com/EricSu-Dev/NexMart-user)
 
 ## 项目截图 | Screenshots
 
