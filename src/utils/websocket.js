@@ -1,6 +1,7 @@
 import { ElNotification } from 'element-plus'
+import request from '@/utils/request'
 
-const WS_URL = 'ws://localhost:8087/ws/order'
+const WS_URL = 'wss://nexmart.tech/ws/order'
 const RECONNECT_DELAY = 3000
 const ORDER_AUDIO = new URL('../叮咚，你有新订单.mp3', import.meta.url).href
 
@@ -13,12 +14,19 @@ function playOrderSound() {
   audio.play().catch(e => console.warn('[WebSocket] 音频播放失败:', e))
 }
 
-function connect() {
-  if (ws && ws.readyState === WebSocket.OPEN) {
+async function connect() {
+  isManualClose = false
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
+  let data
+  try {
+    ({ data } = await request.post('/common/ws-ticket?channel=order'))
+  } catch (error) {
+    console.error('[WebSocket] Failed to get ticket:', error)
+    if (!isManualClose) reconnect()
     return
   }
-
-  ws = new WebSocket(WS_URL)
+  if (isManualClose || ws) return
+  ws = new WebSocket(`${WS_URL}?ticket=${encodeURIComponent(data.ticket)}`)
 
   ws.onopen = () => {
     console.log('[WebSocket] 连接成功')
@@ -42,6 +50,7 @@ function connect() {
   }
 
   ws.onclose = () => {
+    ws = null
     console.log('[WebSocket] 连接关闭')
     if (!isManualClose) {
       reconnect()

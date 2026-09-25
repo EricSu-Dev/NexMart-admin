@@ -1,6 +1,13 @@
 <template>
   <div>
-    <h2 class="page-title">概览统计</h2>
+    <div class="dashboard-heading">
+      <h2 class="page-title">概览统计</h2>
+      <el-select v-model="trendDays" size="small" class="trend-range" @change="loadTrends">
+        <el-option label="近30天" :value="30" />
+        <el-option label="近90天" :value="90" />
+        <el-option label="近365天" :value="365" />
+      </el-select>
+    </div>
 
     <div class="stat-row">
       <div class="stat-card" v-for="card in statCards" :key="card.label">
@@ -16,12 +23,18 @@
 
     <div class="chart-row">
       <div class="chart-card">
-        <h3 class="chart-title">近30天订单趋势</h3>
-        <div ref="orderChartRef" class="chart-container"></div>
+        <h3 class="chart-title">近{{ trendDays }}天订单趋势</h3>
+        <div class="chart-container">
+          <div ref="orderChartRef" class="chart-canvas"></div>
+          <div v-if="orderTrendState !== 'ready'" class="chart-placeholder">{{ trendStateText(orderTrendState) }}</div>
+        </div>
       </div>
       <div class="chart-card">
-        <h3 class="chart-title">近30天营收趋势</h3>
-        <div ref="revenueChartRef" class="chart-container"></div>
+        <h3 class="chart-title">近{{ trendDays }}天营收趋势</h3>
+        <div class="chart-container">
+          <div ref="revenueChartRef" class="chart-canvas"></div>
+          <div v-if="revenueTrendState !== 'ready'" class="chart-placeholder">{{ trendStateText(revenueTrendState) }}</div>
+        </div>
       </div>
     </div>
   </div>
@@ -45,16 +58,20 @@ const orderChartRef = ref(null)
 const revenueChartRef = ref(null)
 let orderChart = null
 let revenueChart = null
+const trendDays = ref(365)
+const orderTrendState = ref('loading')
+const revenueTrendState = ref('loading')
+const trendStateText = state => state === 'empty' ? '该时间范围暂无数据' : state === 'error' ? '趋势加载失败' : '加载中...'
 
 const initOrderChart = (data) => {
   if (!orderChartRef.value) return
-  orderChart = echarts.init(orderChartRef.value)
+  if (!orderChart) orderChart = echarts.init(orderChartRef.value)
   orderChart.setOption({
     tooltip: { trigger: 'axis' },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
     xAxis: {
       type: 'category',
-      data: data.map(item => item.date.slice(5)),
+      data: data.map(item => String(item.date ?? '').slice(5)),
       axisLine: { lineStyle: { color: '#ddd' } },
       axisLabel: { color: '#666' }
     },
@@ -81,13 +98,13 @@ const initOrderChart = (data) => {
 
 const initRevenueChart = (data) => {
   if (!revenueChartRef.value) return
-  revenueChart = echarts.init(revenueChartRef.value)
+  if (!revenueChart) revenueChart = echarts.init(revenueChartRef.value)
   revenueChart.setOption({
     tooltip: { trigger: 'axis', formatter: '{b}<br/>营收: ¥{c}' },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
     xAxis: {
       type: 'category',
-      data: data.map(item => item.date.slice(5)),
+      data: data.map(item => String(item.date ?? '').slice(5)),
       axisLine: { lineStyle: { color: '#ddd' } },
       axisLabel: { color: '#666' }
     },
@@ -117,22 +134,53 @@ const handleResize = () => {
   revenueChart?.resize()
 }
 
-onMounted(async () => {
-  try {
-    const [statsRes, orderRes, revenueRes] = await Promise.all([
-      dashboardApi.getStats(),
-      dashboardApi.getOrderTrend(),
-      dashboardApi.getRevenueTrend()
-    ])
+const loadTrends = async () => {
+  const days = trendDays.value
+  orderTrendState.value = 'loading'
+  revenueTrendState.value = 'loading'
+  const [orderResult, revenueResult] = await Promise.allSettled([
+    dashboardApi.getOrderTrend(days),
+    dashboardApi.getRevenueTrend(days)
+  ])
+  if (days !== trendDays.value) return
+  if (orderResult.status === 'fulfilled') {
+    const data = orderResult.value.data ?? []
+    if (data.length) {
+      initOrderChart(data)
+      orderTrendState.value = 'ready'
+    } else {
+      orderChart?.dispose()
+      orderChart = null
+      orderTrendState.value = 'empty'
+    }
+  } else {
+    orderTrendState.value = 'error'
+  }
+  if (revenueResult.status === 'fulfilled') {
+    const data = revenueResult.value.data ?? []
+    if (data.length) {
+      initRevenueChart(data)
+      revenueTrendState.value = 'ready'
+    } else {
+      revenueChart?.dispose()
+      revenueChart = null
+      revenueTrendState.value = 'empty'
+    }
+  } else {
+    revenueTrendState.value = 'error'
+  }
+}
+
+onMounted(() => {
+  dashboardApi.getStats().then(statsRes => {
     const d = statsRes.data
     statCards.value[0].value = d.totalProducts
     statCards.value[1].value = d.totalOrders
     statCards.value[2].value = d.totalUsers
     statCards.value[3].value = d.pendingDelivery
     statCards.value[4].value = d.refundingOrders
-    initOrderChart(orderRes.data)
-    initRevenueChart(revenueRes.data)
-  } catch {}
+  }).catch(() => {})
+  loadTrends()
   window.addEventListener('resize', handleResize)
 })
 
@@ -144,7 +192,9 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.page-title { font-size: 20px; color: #303133; margin: 0 0 20px; }
+.dashboard-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.page-title { font-size: 20px; color: #303133; margin: 0; }
+.trend-range { width: 120px; }
 
 .stat-row { display: flex; gap: 12px; }
 
@@ -171,5 +221,7 @@ onUnmounted(() => {
   padding: 16px;
 }
 .chart-title { font-size: 15px; color: #303133; margin: 0 0 12px; font-weight: 600; }
-.chart-container { height: 280px; }
+.chart-container { height: 280px; position: relative; }
+.chart-canvas { width: 100%; height: 100%; }
+.chart-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #909399; background: #fff; font-size: 14px; }
 </style>

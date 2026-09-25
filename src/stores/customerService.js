@@ -7,6 +7,9 @@ import { ElMessage } from 'element-plus'
 export const useCustomerServiceStore = defineStore('customerService', () => {
   const adminStore = useAdminStore()
   const sessionList = ref([])
+  const sessionPage = ref(1)
+  const sessionPageSize = 20
+  const sessionTotal = ref(0)
   const wsConnected = ref(false)
   const currentSessionId = ref(null)
   let onMessageCallback = null // 消息回调，用于通知聊天页面
@@ -14,6 +17,8 @@ export const useCustomerServiceStore = defineStore('customerService', () => {
   let heartbeatTimer = null
   let reconnectTimer = null
   let isUnmounted = false
+  let connectionGeneration = 0
+  let sessionRequestVersion = 0
 
   // 计算属性：统计所有会话的未读总数 (3 + 1 = 4)
   const totalUnreadCount = computed(() => {
@@ -21,30 +26,48 @@ export const useCustomerServiceStore = defineStore('customerService', () => {
   })
 
   // 加载会话列表
-  const fetchSessions = async (keyword = '') => {
+  const fetchSessions = async (keyword = '', page = sessionPage.value) => {
+    const requestVersion = ++sessionRequestVersion
+    const generation = connectionGeneration
     try {
-      const res = await customerServiceApi.getSessionList({ 
-        current: 1, 
-        size: 100, 
-        keyword 
+      const res = await customerServiceApi.getSessionList({
+        current: page,
+        size: sessionPageSize,
+        keyword
       })
+      if (requestVersion !== sessionRequestVersion || generation !== connectionGeneration) return
       sessionList.value = res.data.records || []
+      sessionPage.value = page
+      sessionTotal.value = res.data.total || 0
     } catch (err) {
       console.error('[CS Store] 加载会话失败', err)
     }
   }
 
+  // 显式进入管理布局时才允许重新连接。
+  const openWebSocket = () => {
+    isUnmounted = false
+    initWebSocket()
+  }
+
   // 初始化 WebSocket
-  const initWebSocket = () => {
+  const initWebSocket = async () => {
     if (ws || isUnmounted) return
     
     const adminId = adminStore.userInfo?.id
     if (!adminId) return
+    const generation = connectionGeneration
 
-    const role = adminStore.isBoss ? 'ROLE_BOSS' : 'ROLE_ADMIN'
-    const wsUrl = `ws://localhost:8087/ws/cs/websocket?userId=${adminId}&role=${role}`
-    
-    ws = new WebSocket(wsUrl)
+    let data
+    try {
+      ({ data } = await customerServiceApi.getWebSocketTicket())
+    } catch (error) {
+      console.error('[CS WS] Failed to get ticket:', error)
+      if (!isUnmounted) reconnectTimer = setTimeout(initWebSocket, 5000)
+      return
+    }
+    if (isUnmounted || ws || generation !== connectionGeneration) return
+    ws = new WebSocket(`wss://nexmart.tech/ws/cs/websocket?ticket=${encodeURIComponent(data.ticket)}`)
     
     ws.onopen = () => {
       wsConnected.value = true
@@ -87,6 +110,7 @@ export const useCustomerServiceStore = defineStore('customerService', () => {
     }
     
     ws.onclose = () => {
+      ws = null
       wsConnected.value = false
       stopHeartbeat()
       if (!isUnmounted) {
@@ -114,6 +138,8 @@ export const useCustomerServiceStore = defineStore('customerService', () => {
 
   const closeWebSocket = () => {
     isUnmounted = true
+    connectionGeneration++
+    sessionRequestVersion++
     if (ws) {
       ws.onclose = null
       ws.close()
@@ -121,6 +147,13 @@ export const useCustomerServiceStore = defineStore('customerService', () => {
     }
     stopHeartbeat()
     if (reconnectTimer) clearTimeout(reconnectTimer)
+    reconnectTimer = null
+    wsConnected.value = false
+    currentSessionId.value = null
+    sessionList.value = []
+    sessionPage.value = 1
+    sessionTotal.value = 0
+    onMessageCallback = null
   }
 
   // 发送消息的方法封装（统一入口）
@@ -139,11 +172,15 @@ export const useCustomerServiceStore = defineStore('customerService', () => {
 
   return {
     sessionList,
+    sessionPage,
+    sessionPageSize,
+    sessionTotal,
     wsConnected,
     currentSessionId,
     totalUnreadCount,
     fetchSessions,
     initWebSocket,
+    openWebSocket,
     closeWebSocket,
     sendWsMessage,
     startHeartbeat,

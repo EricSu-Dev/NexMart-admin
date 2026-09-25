@@ -153,15 +153,17 @@ onMounted(() => {
   
   // 初始化全局客服数据
   csStore.fetchSessions()
-  csStore.initWebSocket()
+  csStore.openWebSocket()
 })
 
 onUnmounted(() => {
   disconnect()
+  csStore.closeWebSocket()
 })
 
 const handleCommand = (cmd) => {
   if (cmd === 'logout') {
+    csStore.closeWebSocket()
     adminStore.logout()
     router.push('/login')
   } else if (cmd === 'profile') {

@@ -36,6 +36,17 @@
           </div>
           <el-empty v-if="csStore.sessionList.length === 0" description="暂无会话" />
         </div>
+        <div v-if="csStore.sessionTotal > csStore.sessionPageSize" class="session-pagination">
+          <el-pagination
+            small
+            layout="prev, next"
+            :current-page="csStore.sessionPage"
+            :page-size="csStore.sessionPageSize"
+            :total="csStore.sessionTotal"
+            @current-change="changeSessionPage"
+          />
+          <span>{{ csStore.sessionPage }} / {{ Math.ceil(csStore.sessionTotal / csStore.sessionPageSize) }}</span>
+        </div>
       </aside>
 
       <!-- 右侧：聊天窗口 -->
@@ -298,7 +309,13 @@ const formatTime = (time) => time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : 
 // 加载会话列表 (通过 Store 刷新)
 const loadSessions = async () => {
   sessionsLoading.value = true
-  await csStore.fetchSessions(sessionKeyword.value)
+  await csStore.fetchSessions(sessionKeyword.value, 1)
+  sessionsLoading.value = false
+}
+
+const changeSessionPage = async (page) => {
+  sessionsLoading.value = true
+  await csStore.fetchSessions(sessionKeyword.value, page)
   sessionsLoading.value = false
 }
 
@@ -548,6 +565,15 @@ onUnmounted(() => {
 .session-list {
   flex: 1;
   overflow-y: auto;
+}
+.session-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 0;
+  font-size: 12px;
+  border-top: 1px solid #f0f2f5;
 }
 .session-item {
   display: flex;

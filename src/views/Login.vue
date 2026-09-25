@@ -29,7 +29,7 @@
         <div class="login-card">
           <div class="login-header">
             <h2>{{ isResetMode ? '重置密码' : '欢迎登录' }}</h2>
-            <p>{{ isResetMode ? '请输入手机号和验证码重置密码' : '请输入您的账号信息' }}</p>
+            <p class="demo-account">{{ isResetMode ? '请输入手机号和验证码重置密码' : '演示账号：boss   密码：123456' }}</p>
           </div>
 
           <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
@@ -68,7 +68,7 @@
                   </div>
                 </div>
               </el-form-item>
-              <div class="form-actions">
+<div class="form-actions">
                 <el-button
                   type="primary"
                   size="large"
@@ -525,6 +525,13 @@ onMounted(() => {
   color: #909399;
   font-size: 14px;
   margin: 0;
+}
+
+.login-header .demo-account {
+  color: #667eea;
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 4px;
 }
 
 .form-actions {
